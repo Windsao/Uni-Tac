@@ -1,0 +1,3 @@
+defaults:
+  - teacher: ../config_teacher  # 直接加载 configs/config_teacher.yaml
+  - student: ../config_student  # 直接加载 configs/config_student.yaml

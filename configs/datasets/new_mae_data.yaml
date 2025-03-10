@@ -1,0 +1,44 @@
+Braille_TD:
+  activate: true
+  eval_only: false
+  data_loader:
+    _target_: t3.data_loader.SingleTowerMAEDataset
+    data_dir: "data/newdata/Braille_TD"
+    encoder_domain: "wedge"
+    decoder_domain: "mae_recon_single"
+    random_resize_crop: ${datasets.VAR_random_resize_crop}
+    random_hv_flip_prob: ${datasets.VAR_random_hv_flip_prob}
+    color_jitter: ${datasets.VAR_color_jitter}
+    img_norm:
+      mean: [0.37423, 0.40324, 0.36555]
+      std: [0.17482, 0.08264, 0.09019]
+
+octopi:
+  activate: true
+  eval_only: false
+  data_loader:
+    _target_: t3.data_loader.SingleTowerMAEDataset
+    data_dir: "data/newdata/octopi"
+    encoder_domain: "wedge"
+    decoder_domain: "mae_recon_single"
+    random_resize_crop: ${datasets.VAR_random_resize_crop}
+    random_hv_flip_prob: ${datasets.VAR_random_hv_flip_prob}
+    color_jitter: ${datasets.VAR_color_jitter}
+    img_norm:
+      mean: [0.22836, 0.38051, 0.41538]
+      std: [0.13016, 0.06379, 0.10492]
+
+TarF:
+  activate: true
+  eval_only: false
+  data_loader:
+    _target_: t3.data_loader.SingleTowerMAEDataset
+    data_dir: "data/newdata/TarF"
+    encoder_domain: "digit"
+    decoder_domain: "mae_recon_single"
+    random_resize_crop: ${datasets.VAR_random_resize_crop}
+    random_hv_flip_prob: ${datasets.VAR_random_hv_flip_prob}
+    color_jitter: ${datasets.VAR_color_jitter}
+    img_norm:
+      mean: [0.39952, 0.43678, 0.44893]
+      std: [0.18718, 0.14741, 0.09593]

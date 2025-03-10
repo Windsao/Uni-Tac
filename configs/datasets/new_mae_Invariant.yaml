@@ -1,0 +1,15 @@
+
+Invariant_renders:
+  activate: true
+  eval_only: false
+  data_loader:
+    _target_: t3.data_loader.SingleTowerMAEDataset
+    data_dir: "data/Invariant"
+    encoder_domain: "digit"
+    decoder_domain: "mae_recon_single"
+    random_resize_crop: ${datasets.VAR_random_resize_crop}
+    random_hv_flip_prob: ${datasets.VAR_random_hv_flip_prob}
+    color_jitter: ${datasets.VAR_color_jitter}
+    img_norm:
+      mean: [0.40046, 0.43479, 0.41344] 
+      std: [0.19703, 0.18606, 0.19752]

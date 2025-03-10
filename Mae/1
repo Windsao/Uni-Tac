@@ -1,0 +1,86 @@
+import hydra
+import numpy as np
+from t3.models import T3
+from omegaconf import OmegaConf
+
+# note: encoder_domain should be densetact but since there's no downloaded encoder called densetact I'll just use wedge
+# refer to t3/configs/datasets for sample yaml config
+data_cfg = """
+cnc_densetact:
+  data_loader:
+    _target_: t3.data_loader.SingleTowerClassificationDataset
+    batch_size: 8
+    label_process_func: t3.task_utils.process_cnc_cls_label
+    data_dir: data/FoundationTactile/cnc/cnc_DenseTact/val
+    encoder_domain: wedge
+    decoder_domain: cls_cnc
+    random_resize_crop: true
+    random_hv_flip_prob: 0.5
+    color_jitter:
+      brightness: 0.4
+      contrast: 0.4
+      saturation: 0.5
+      hue: 0.3
+    img_norm:
+      mean: [0.20997, 0.28465, 0.26797] 
+      std: [0.29838, 0.36981, 0.33362]
+"""
+data_cfg = OmegaConf.create(data_cfg)
+# Modify data_cfg.xxx.data_loader below for a new dataset!!
+cnc_dataloader = hydra.utils.instantiate(data_cfg.cnc_densetact.data_loader).get_dataloader(num_workers=0)
+
+network_cfg = """
+patch_size: 16
+encoder_embed_dim: 192
+encoder_heads: 3
+pooling: "none"
+encoder_depth: 3
+trunk_depth: 9
+
+encoders:
+  wedge:
+    _target_: t3.models.ViTEncoder
+    patch_size: ${patch_size}
+    embed_dim: ${encoder_embed_dim}
+    depth: ${encoder_depth}
+    num_heads: ${encoder_heads}
+    mlp_ratio: 4.
+  svelte:
+    _target_: t3.models.ViTEncoder
+    patch_size: ${patch_size}
+    embed_dim: ${encoder_embed_dim}
+    depth: ${encoder_depth}
+    num_heads: ${encoder_heads}
+    mlp_ratio: 4.
+
+shared_trunk:
+  _target_: t3.models.TransformerTrunk
+  embed_dim: ${encoder_embed_dim}
+  depth: ${trunk_depth}
+  num_heads: ${encoder_heads}
+  mlp_ratio: 4.
+  pooling_type: ${pooling}
+
+decoders:
+  cls_cnc:
+    _target_: t3.models.MLPDecoder
+    input_dim: ${encoder_embed_dim}
+    output_dim: 6
+    hidden_dims: [256, 128, 64]
+    dropout_p: 0.1
+    transformer_upstream: true
+    pooling_type: cls
+    loss_func:
+      _target_: torch.nn.CrossEntropyLoss
+"""
+network_cfg = OmegaConf.create(network_cfg)
+
+model = T3(network_cfg)
+model.load_components("t3_tiny")
+model.model_summary()
+
+model.eval()
+cnc_batch = next(iter(cnc_dataloader))
+#svelte_batch = next(iter(svelte_dataloader))
+
+
