@@ -10,7 +10,7 @@ train:
   log_freq: 10 # how often to log to wandb
   save_model: true
   finetune_from: "" # path to a model to finetune / load from
-  teacher_ckpt: "/nyx-storage1/hanliu/Uni-Tac/ckpt/t3_medium/" # path to teacher model
+  teacher_ckpt: "/nyx-storage1/hanliu/Uni-Tac/tac_ckpt/t3_medium" # path to teacher model
 
   # Will train for total_train_steps, during which will run eval for test_steps every test_every steps
   total_train_steps: 10000 #00000

@@ -1,7 +1,7 @@
 checkpoints/
 data/
 wandb/
-ckpt/
+tac_ckpt/
 outputs/
 .git
 t3/__pycache__/

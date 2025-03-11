@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1 python scripts/train_nn_kd.py
