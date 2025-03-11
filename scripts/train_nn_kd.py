@@ -1,13 +1,10 @@
 import hydra
 
-from t3 import T3Pretrain
-# from t3 import T3Test
+from t3 import T3Pretrain_KD
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config.yaml")
 def train_nn(cfg):
-    import pdb; pdb.set_trace()
-    pretrainer = T3Pretrain(cfg, run_id="test")
-    # pretrainer = T3Test(cfg)
+    pretrainer = T3Pretrain_KD(cfg, run_id="test")
     pretrainer.setup_model()
     pretrainer.setup_optimizer()
     pretrainer.setup_dataset()

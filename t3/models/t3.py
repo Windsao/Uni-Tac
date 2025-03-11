@@ -22,12 +22,7 @@ class T3(nn.Module):
         self.encoders = {}
         self.decoders = {}
         self.loss_funcs = {}
-        print(cfg)
-        print('--------------------------------')
-        print(cfg.shared_trunk)        
-        print('--------------------------------')
-        print(cfg.encoder_embed_dim)
-        cfg = OmegaConf.to_container(cfg, resolve=True)
+        cfg = OmegaConf.to_container(cfg)
         cfg = OmegaConf.create(cfg)
 
         self.trunk = hydra.utils.instantiate(cfg.shared_trunk)
@@ -89,7 +84,15 @@ class T3(nn.Module):
     
     def unfreeze_trunk(self):
         self.trunk.unfreeze()
-
+    
+    def encoder_output(self, x):
+        if self._forward_mode == "single_tower":
+            return self.encoders[self._encoder_domain](x)[0]
+        elif self._forward_mode == "multi_tower":
+            return [self.encoders[self._encoder_domain](x)[0] for x in xs]
+        else:
+            raise ValueError(f"forward mode {self._forward_mode} not recognized")
+    
     def forward(self, *args, **kwargs):
         if self._forward_mode == "single_tower":
             return self.single_tower_forward(*args, **kwargs)
@@ -131,3 +134,125 @@ class T3(nn.Module):
 
 def make_T3_tiny(cfg):
     return T3(cfg)
+
+"""
+Unified Transferable Tactile Transformer (T3_Uni)
+A version of T3 that uses a single encoder for unified modality learning
+
+Based on the original T3 by Jialiang (Alan) Zhao
+"""
+
+class T3_Uni(T3):
+    def __init__(self, cfg, **kwargs):
+        # Initialize nn.Module but not T3's full initialization
+        super(T3, self).__init__()
+        
+        self.cfg = cfg
+        self.decoders = {}
+        self.loss_funcs = {}
+        
+        # Convert config
+        cfg = OmegaConf.to_container(cfg, resolve=False)
+        cfg = OmegaConf.create(cfg)
+        
+        # Initialize trunk
+        self.trunk = hydra.utils.instantiate(cfg.shared_trunk)
+        self._is_trunk_transformer = "Transformer" in cfg.shared_trunk._target_
+        
+        # Initialize single unified encoder instead of multiple encoders
+        self.encoder = hydra.utils.instantiate(cfg.encoder)
+        
+        # Initialize decoders (same as parent)
+        for name, decoder_cfg in cfg.decoders.items():
+            self.decoders[name] = hydra.utils.instantiate(decoder_cfg)
+            if hasattr(decoder_cfg, "loss_func"):
+                self.loss_funcs[name] = hydra.utils.instantiate(decoder_cfg.loss_func)
+            else:
+                self.loss_funcs[name] = None
+        
+        # Convert to ModuleDicts
+        self.decoders = nn.ModuleDict(self.decoders)
+        self.loss_funcs = nn.ModuleDict(self.loss_funcs)
+        
+        # Set defaults
+        self._decoder_domain = None
+        self._forward_mode = "single_tower"
+    
+    def model_summary(self):
+        print("==========================================")
+        encoder_parameters = sum(p.numel() for p in self.encoder.parameters() if p.requires_grad)
+        trunk_parameters = sum(p.numel() for p in self.trunk.parameters() if p.requires_grad)
+        decoder_parameters = sum(p.numel() for p in self.decoders.parameters() if p.requires_grad)
+        n_parameters = encoder_parameters + trunk_parameters + decoder_parameters
+        logging(
+            f"number of total trainable params (M): {n_parameters / 1.0e6:.3f} \n\
+                encoder: {encoder_parameters / 1.0e6:.3f} \n\
+                    trunk: {trunk_parameters / 1.0e6:.3f} \n\
+                        decoder: {decoder_parameters / 1.0e6:.3f}", True, "green")
+    
+    def set_decoder(self, decoder_domain, forward_mode="single_tower"):
+        """Set only the decoder domain since there's just one encoder"""
+        assert decoder_domain in self.decoders, f"decoder domain {decoder_domain} not found in decoders"
+        self._decoder_domain = decoder_domain
+        self._forward_mode = forward_mode
+    
+    def encoder_output(self, x):
+        if self._forward_mode == "single_tower":
+            return self.encoder(x)[0]
+        elif self._forward_mode == "multi_tower":
+            return [self.encoder(x)[0] for x in xs]
+        else:
+            raise ValueError(f"forward mode {self._forward_mode} not recognized")
+    
+    # For backward compatibility with T3 API
+    def set_domains(self, encoder_domain, decoder_domain, forward_mode):
+        """Override to ignore encoder_domain since we only have one encoder"""
+        assert decoder_domain in self.decoders, f"decoder domain {decoder_domain} not found in decoders"
+        self._decoder_domain = decoder_domain
+        self._forward_mode = forward_mode
+    
+    def freeze_encoder(self, encoder_domain=None):
+        """Freeze the unified encoder, ignoring encoder_domain"""
+        self.encoder.freeze()
+    
+    def unfreeze_encoder(self, encoder_domain=None):
+        """Unfreeze the unified encoder, ignoring encoder_domain"""
+        self.encoder.unfreeze()
+    
+    def single_tower_forward(self, x):
+        """Forward pass with single tower architecture"""
+        x = self.encoder(x)
+        x = self.trunk(x)
+        x = self.decoders[self._decoder_domain](x)
+        return x
+    
+    def multi_tower_forward(self, *xs):
+        """Forward pass with multi-tower architecture"""
+        xs = [self.encoder(x) for x in xs]
+        xs = [self.trunk(x) for x in xs]
+        x = self.decoders[self._decoder_domain](*xs)
+        return x
+    
+    def save_components(self, dir):
+        """Save model components"""
+        os.makedirs(f"{dir}/decoders", exist_ok=True)
+        self.encoder.save(f"{dir}/encoder.pth")
+        for decoder_name, decoder in self.decoders.items():
+            decoder.save(f"{dir}/decoders/{decoder_name}.pth")
+        self.trunk.save(f"{dir}/trunk.pth")
+
+    def load_components(self, dir):
+        """Load model components"""
+        self.encoder.load(f"{dir}/encoder.pth")
+        for decoder_name, decoder in self.decoders.items():
+            decoder.load(f"{dir}/decoders/{decoder_name}.pth")
+        self.trunk.load(f"{dir}/trunk.pth")
+    
+    # Add unified-model-specific methods
+    def get_embeddings(self, x):
+        """Get encoded embeddings"""
+        return self.encoder(x)
+
+def make_T3_Uni(cfg):
+    """Factory function to create a T3_Uni model"""
+    return T3_Uni(cfg)

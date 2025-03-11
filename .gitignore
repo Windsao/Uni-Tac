@@ -1,5 +1,6 @@
-.git
 checkpoints/
 data/
 wandb/
-
+ckpt/
+outputs/
+.git

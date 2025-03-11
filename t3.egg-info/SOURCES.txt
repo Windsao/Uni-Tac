@@ -1,0 +1,17 @@
+LICENSE
+pyproject.toml
+t3/__init__.py
+t3/_calandra17_label_dict.py
+t3/data_loader.py
+t3/learn_utils.py
+t3/pretrain.py
+t3/pretrain_kd.py
+t3/task_utils.py
+t3/teacher_S.py
+t3/test.py
+t3/utils.py
+t3.egg-info/PKG-INFO
+t3.egg-info/SOURCES.txt
+t3.egg-info/dependency_links.txt
+t3.egg-info/requires.txt
+t3.egg-info/top_level.txt

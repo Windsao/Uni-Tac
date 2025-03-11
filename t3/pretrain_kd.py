@@ -1,6 +1,6 @@
 import torch
 
-from t3.models import T3
+from t3.models import T3, T3_Uni
 from t3.utils import logging
 from t3.data_loader import WeightedDataLoader
 from t3.models.nn_utils import mae_unpatchify, cross_mae_unpatchify, mae_unpatchify_pred_only, mae_apply_patchified_mask, get_device
@@ -22,10 +22,11 @@ except ImportError:
     wandb = None
     print("wandb is not installed, will not log to wandb")
 
-class T3Pretrain:
-    def __init__(self, cfg, run_id=None):
+class T3Pretrain_KD:
+    def __init__(self, cfg, alpha=0.5, run_id=None):
         self.cfg = cfg
         self.model = None
+        self.teacher_model = None
         self.train_dataset = None
         self.eval_dataset = None
         self.img_preprocessors = None
@@ -39,6 +40,7 @@ class T3Pretrain:
         self.min_avg_val_loss = np.inf
 
         self.device = get_device()
+        self.alpha = alpha
         
         if run_id is None:
             self.run_id = self.gen_run_id()
@@ -49,10 +51,11 @@ class T3Pretrain:
         if self.cfg.train.wandb and wandb and is_main_process():
             wandb.init(
                 project="Uni-T3",
-                config=OmegaConf.to_container(self.cfg, resolve=True),
+                config=OmegaConf.to_container(self.cfg),
                 name=self.run_id,
                 entity=self.cfg.train.wandb_entity,
-                magic=False)
+                magic=False
+            )
             # define our custom x axis metric
             wandb.define_metric("train/step")
             wandb.define_metric("eval/step")
@@ -64,8 +67,8 @@ class T3Pretrain:
         return f"{datetime.now().strftime('%Y-%m-%d_%H_%M_%S')}"
 
     def setup_model(self):
-        
-        self.model = T3(self.cfg.network)
+        print('Setting up model......')
+        self.model = T3_Uni(self.cfg.network)
         self.encoder_frozen = False
         self.trunk_frozen = False
         self.scheduled_unfreeze_step = -1
@@ -82,7 +85,16 @@ class T3Pretrain:
                 self.scheduled_unfreeze_step = self.cfg.train.scheduled_unfreeze_step
                 logging(f"Encoder and trunk will be frozen only until step {self.scheduled_unfreeze_step}", True, "blue")
         self.model.model_summary()
-    
+        print('Setting up teacher model......')
+        self.teacher_model = T3(self.cfg.teacher_network)
+        if len(self.cfg.train.teacher_ckpt) > 0:
+            self.teacher_model.load_components(self.cfg.train.teacher_ckpt)
+            logging(f"Loaded model from {self.cfg.train.teacher_ckpt}", True, "green")
+        # Freeze teacher model since we only use it for inference
+        for param in self.teacher_model.parameters():
+            param.requires_grad = False
+        self.teacher_model.model_summary()
+        
     def setup_optimizer(self):
         assert self.model is not None
         trunk_params = [v for k, v in self.model.named_parameters() if "trunk" in k]
@@ -327,9 +339,56 @@ class T3Pretrain:
             Xs = [x.to(self.device, non_blocking=True) for x in batch_x]
             pred = self.model(*Xs)
         return label_inv_normalize, pred
+    
+    def compute_kd_loss(self, data_batch):        
+        enc_domain = data_batch["encoder_domain"]
+        dec_domain = data_batch["decoder_domain"]
+        batch_x = data_batch["X"]
 
+        # use label denormalize function to calculate RMSE
+        if "pose_estimation_" in dec_domain:
+            label_inv_normalize = data_batch["label_inv_normalize"]
+        else:
+            label_inv_normalize = None
+
+        # set the domains & forward mode for the model
+        if "electroassem" in dec_domain or "pose_estimation" in dec_domain:
+            forward_mode = "multi_tower"
+        else:
+            forward_mode = "single_tower"
+            
+        self.teacher_model.set_domains(enc_domain, dec_domain, forward_mode)
+
+        if forward_mode == "single_tower":
+            Xs = batch_x.to(self.device, non_blocking=True)
+            teacher_encoder_output = self.teacher_model.encoder_output(Xs)
+            student_encoder_output = self.model.encoder_output(Xs)
+            # Compute KL divergence loss between teacher and student encoder outputs
+            kl_loss = torch.nn.functional.kl_div(
+                torch.nn.functional.log_softmax(student_encoder_output, dim=-1),
+                torch.nn.functional.softmax(teacher_encoder_output, dim=-1),
+                reduction='batchmean'
+            )
+        else:
+            Xs = [x.to(self.device, non_blocking=True) for x in batch_x]
+            teacher_encoder_output = self.teacher_model.encoder_output(*Xs)
+            student_encoder_output = self.model.encoder_output(*Xs)
+            # Compute KL divergence loss between teacher and student encoder outputs for multi-tower case
+            kl_losses = []
+            for t_out, s_out in zip(teacher_encoder_output, student_encoder_output):
+                kl_loss_i = torch.nn.functional.kl_div(
+                    torch.nn.functional.log_softmax(s_out, dim=-1),
+                    torch.nn.functional.softmax(t_out, dim=-1),
+                    reduction='batchmean'
+                )
+                kl_losses.append(kl_loss_i)
+            kl_loss = sum(kl_losses) / len(kl_losses)  # Average KL divergence across all towers
+        
+        return kl_loss
+           
     def train_test(self, run_id, total_train_steps, test_every, test_steps):
         self.model.to(self.device)
+        self.teacher_model.to(self.device).eval()
         cur_step = 0
         train_iter = iter(self.train_dataloader)
         while cur_step < total_train_steps:
@@ -361,9 +420,15 @@ class T3Pretrain:
                 
                 self.optimizer.zero_grad()
                 label_inv_normalize, pred = self.forward_once(data)
-
+                
+                
                 Y = batch_y.to(self.device)
-                loss = self.model.compute_loss(pred, Y)
+                
+                pred_loss = self.model.compute_loss(pred, Y)
+                kd_loss = self.compute_kd_loss(data)
+                print(f"pred_loss: {pred_loss.item()}, kd_loss: {kd_loss.item()}")
+                loss = pred_loss + self.alpha * kd_loss
+                
                 loss.backward()
                 self.optimizer.step()
                 self.scheduler.step()
@@ -374,10 +439,13 @@ class T3Pretrain:
                 if self.cfg.train.wandb and wandb and is_main_process() and cur_step % self.cfg.train.log_freq == 1:
                     log_dict = {
                         f"train/loss_{enc_domain}_{dec_domain}": loss.item(),
-                        f"train/epoch": cur_step // len(self.train_dataloader),
-                        f"train/step": cur_step,
-                        f"train/trunk_lr": self.optimizer.param_groups[0]["lr"],
-                        f"train/nontrunk_lr": self.optimizer.param_groups[1]["lr"]}
+                        f"train/pred_loss_{enc_domain}_{dec_domain}": pred_loss.item(),
+                        f"train/kd_loss_{enc_domain}_{dec_domain}": kd_loss.item(),
+                        # f"train/epoch": cur_step // len(self.train_dataloader),
+                        # f"train/step": cur_step,
+                        # f"train/trunk_lr": self.optimizer.param_groups[0]["lr"],
+                        # f"train/nontrunk_lr": self.optimizer.param_groups[1]["lr"]
+                    }
                     if "pose_estimation_6d" in dec_domain:
                         log_dict[f"train/6dpe_rot_rmse_{enc_domain}"] = rot_rmse(pred, Y, denormalize_func=label_inv_normalize)
                         log_dict[f"train/6dpe_tra_rmse_{enc_domain}"] = tra_rmse(pred, Y, denormalize_func=label_inv_normalize)
@@ -397,7 +465,7 @@ class T3Pretrain:
             self.print_train_vs_test_stats(train_loss_history, test_loss_history)
             
             # save model
-            if self.cfg.train.save_model and is_main_process():
+            if self.cfg.train.save_model and is_main_process() and cur_step % self.cfg.train.log_freq == 1:
                 avg_val_loss = np.mean(test_loss_history["all_losses"])
                 self.save_model(run_id, avg_val_loss, cur_step)
         return
