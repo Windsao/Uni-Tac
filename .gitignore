@@ -4,3 +4,11 @@ wandb/
 ckpt/
 outputs/
 .git
+t3/__pycache__/
+t3/models/__pycache__/
+t3/models/encoders/__pycache__/
+t3/models/decoders/__pycache__/
+t3/models/trunk/__pycache__/
+t3/models/encoders/resnet/__pycache__/
+t3/models/decoders/resnet/__pycache__/
+t3.egg-info/
