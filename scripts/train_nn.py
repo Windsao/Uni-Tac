@@ -5,7 +5,6 @@ from t3 import T3Pretrain
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config.yaml")
 def train_nn(cfg):
-    import pdb; pdb.set_trace()
     pretrainer = T3Pretrain(cfg, run_id="test")
     # pretrainer = T3Test(cfg)
     pretrainer.setup_model()

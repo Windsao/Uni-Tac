@@ -177,7 +177,8 @@ class T3_Uni(T3):
         # Set defaults
         self._decoder_domain = None
         self._forward_mode = "single_tower"
-    
+        self.path = cfg.encoder_path
+        
     def model_summary(self):
         print("==========================================")
         encoder_parameters = sum(p.numel() for p in self.encoder.parameters() if p.requires_grad)
@@ -252,6 +253,10 @@ class T3_Uni(T3):
     def get_embeddings(self, x):
         """Get encoded embeddings"""
         return self.encoder(x)
+
+    def load_encoder(self):
+        """Load encoder weights from a pretrained checkpoint."""
+        self.encoder.load(self.path)
 
 def make_T3_Uni(cfg):
     """Factory function to create a T3_Uni model"""

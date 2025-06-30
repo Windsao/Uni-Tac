@@ -4,7 +4,7 @@ from t3 import T3Pretrain_KD
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config.yaml")
 def train_nn(cfg):
-    pretrainer = T3Pretrain_KD(cfg, run_id="test")
+    pretrainer = T3Pretrain_KD(cfg, run_id=None)
     pretrainer.setup_model()
     pretrainer.setup_optimizer()
     pretrainer.setup_dataset()

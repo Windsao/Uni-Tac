@@ -9,13 +9,13 @@ train:
   wandb_entity: "magicslabnorthwestern" # your wandb username
   log_freq: 10 # how often to log to wandb
   save_model: true
-  finetune_from: "" # path to a model to finetune / load from
-  teacher_ckpt: "/nyx-storage1/hanliu/Uni-Tac/tac_ckpt/t3_medium" # path to teacher model
+  finetune_from: "/nyx-storage1/hanliu/pretrained_tac_ckpt/tac_ckpt/t3_medium/trunk.pth" # path to a model to finetune / load from
+  teacher_ckpt: "/nyx-storage1/hanliu/pretrained_tac_ckpt/tac_ckpt/t3_medium" # path to teacher model
 
   # Will train for total_train_steps, during which will run eval for test_steps every test_every steps
-  total_train_steps: 10000 #00000
-  test_every: 750 #750
-  test_steps: 10 #10
+  total_train_steps: 100000 #00000
+  test_every: 1000 #750
+  test_steps: 100 #10
   generate_mae_visualizations: true
 
   # whether to freeze the encoder and trunk
@@ -44,8 +44,8 @@ defaults:
   - /teacher_network: pretrain1_mae
   - /datasets: 
     - single_tower_mae
-  #   # - cnc_mae
-  #   # - panda_mae_autogen
-  #   # - new_mae_data
-  #   # - new_mae_data_big
-  #   # - new_mae_Invariant
+    - cnc_mae
+    - panda_mae_autogen
+    - new_mae_data
+    - new_mae_data_big
+    - new_mae_Invariant

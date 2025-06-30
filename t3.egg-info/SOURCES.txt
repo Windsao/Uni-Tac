@@ -1,4 +1,5 @@
 LICENSE
+README.md
 pyproject.toml
 t3/__init__.py
 t3/_calandra17_label_dict.py

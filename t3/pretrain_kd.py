@@ -23,7 +23,7 @@ except ImportError:
     print("wandb is not installed, will not log to wandb")
 
 class T3Pretrain_KD:
-    def __init__(self, cfg, alpha=0.5, run_id=None):
+    def __init__(self, cfg, alpha=0.2, run_id=None):
         self.cfg = cfg
         self.model = None
         self.teacher_model = None
@@ -145,7 +145,6 @@ class T3Pretrain_KD:
                 res["random_hv_flip_prob"] = 0
                 res["color_jitter"] = None
             return res
-        
         # load all datasets according to the config as one WeightedDataLoader
         for ds_name, ds_cfg in self.cfg.datasets.items():
             if ds_name.startswith("VAR_"):
@@ -158,7 +157,7 @@ class T3Pretrain_KD:
             
             data_loader_cfg = dict(ds_cfg["data_loader"])
             data_loader_cfg["batch_size"] = self.cfg.train.batch_size
-
+            
             train_ds_cfg = _get_dl_config(data_loader_cfg, "train", for_eval=eval_only)
             eval_ds_cfg = _get_dl_config(data_loader_cfg, "val", for_eval=True)
             
@@ -441,8 +440,8 @@ class T3Pretrain_KD:
                         f"train/loss_{enc_domain}_{dec_domain}": loss.item(),
                         f"train/pred_loss_{enc_domain}_{dec_domain}": pred_loss.item(),
                         f"train/kd_loss_{enc_domain}_{dec_domain}": kd_loss.item(),
-                        # f"train/epoch": cur_step // len(self.train_dataloader),
-                        # f"train/step": cur_step,
+                        f"train/epoch": cur_step // len(self.train_dataloader),
+                        f"train/step": cur_step,
                         # f"train/trunk_lr": self.optimizer.param_groups[0]["lr"],
                         # f"train/nontrunk_lr": self.optimizer.param_groups[1]["lr"]
                     }
@@ -465,7 +464,7 @@ class T3Pretrain_KD:
             self.print_train_vs_test_stats(train_loss_history, test_loss_history)
             
             # save model
-            if self.cfg.train.save_model and is_main_process() and cur_step % self.cfg.train.log_freq == 1:
+            if self.cfg.train.save_model and is_main_process() and cur_step % 5000 == 0:
                 avg_val_loss = np.mean(test_loss_history["all_losses"])
                 self.save_model(run_id, avg_val_loss, cur_step)
         return
